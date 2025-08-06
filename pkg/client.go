@@ -89,13 +89,26 @@ func NewOIDCClient(clientID string, clientSecret string, providerURL string) *OI
 		Scopes:       getScopes(),
 	}
 
+	sessionKey := []byte(Env("SESSION_KEY", "GENERATE ME WITH: openssl rand -hex 16"))
+	if len(sessionKey) != 32 {
+	    log.Fatal("SESSION_KEY must be exactly 32 bytes")
+	}
+	store := sessions.NewCookieStore(sessionKey)
+	store.Options = &sessions.Options{
+		Path:     "/",
+		MaxAge:   86400 * 7, // 7 days
+		HttpOnly: true,
+		Secure:   getEnvBool("SESSION_SECURE", true),
+		SameSite: http.SameSiteLaxMode,
+	}
+
 	client := OIDCClient{
 		rootURL:     rootURL,
 		config:      config,
 		ctx:         ctx,
 		provider:    provider,
 		providerURL: providerURL,
-		store:       sessions.NewCookieStore(securecookie.GenerateRandomKey(32)),
+		store:       store,
 		verifier: provider.Verifier(&oidc.Config{
 			ClientID: clientID,
 		}),
@@ -107,7 +120,14 @@ func NewOIDCClient(clientID string, clientSecret string, providerURL string) *OI
 }
 
 func (c *OIDCClient) oauthCallback(w http.ResponseWriter, r *http.Request) {
-	session, _ := c.store.Get(r, "session-name")
+	session, err := c.store.Get(r, "session-name")
+	if err != nil {
+	    log.Error("Session get error: " + err.Error())
+	}
+
+	if session.Values["state"] == nil {
+	    log.Error("session.Values[\"state\"] is nil - correct host?")
+	}
 
 	if r.URL.Query().Get("state") != session.Values["state"] {
 		log.Error("state did not match")
