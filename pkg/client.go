@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -38,18 +39,20 @@ type OIDCClient struct {
 	ctx context.Context
 }
 
-func strToBool(str string) bool {
-	strbool := strings.ToLower(str)
-	return strbool == "true"
-}
-
-func skipTLSVerify() bool {
-	tlsVerify := strings.ToLower(Env("OIDC_TLS_VERIFY", "true"))
-	return !strToBool(tlsVerify)
+func getEnvBool(key string, defaultVal bool) bool {
+	val, ok := os.LookupEnv(key)
+	if !ok {
+		return defaultVal
+	}
+	b, err := strconv.ParseBool(val)
+	if err != nil {
+		return defaultVal
+	}
+	return b
 }
 
 func createContext(from context.Context) context.Context {
-	if skipTLSVerify() {
+	if !getEnvBool("OIDC_TLS_VERIFY", true) {
 		tr := &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		}
