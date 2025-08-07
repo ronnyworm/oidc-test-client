@@ -1,0 +1,39 @@
+# Use the official Golang image to build the Go application
+FROM golang:1.24 AS build
+
+# Automatic platform ARG variables produced by Docker
+ARG TARGETOS TARGETARCH
+# No CGO!
+ENV CGO_ENABLED=0
+
+# Set the Current Working Directory inside the container
+WORKDIR /app
+
+# Copy go mod and sum files
+COPY go.mod go.sum ./
+
+# Download all dependencies. Dependencies will be cached if the go.mod and go.sum files are not changed
+RUN go mod download
+
+# Copy the source code into the container
+COPY . .
+
+# Build the Go app and store it at the container root
+RUN GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /oidc-test-client .
+
+# Start a new stage from scratch
+FROM alpine:latest
+
+# Set the Current Working Directory inside the container
+WORKDIR /root/
+
+# Copy the Pre-built binary file from the previous stage
+COPY --from=build /oidc-test-client .
+
+EXPOSE 9009
+
+ENV OIDC_BIND=0.0.0.0:9009
+
+HEALTHCHECK --interval=60s --start-period=1s CMD [ "/root/oidc-test-client", "healthcheck" ]
+
+ENTRYPOINT [ "/root/oidc-test-client" ]
